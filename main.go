@@ -80,7 +80,7 @@ func main() {
 	if _, err := io.Copy(zip, f); err != nil {
 		panic(err)
 	}
-
+	os.Remove(entryDir + "/.fileBase.txt")
 	end := time.Now()
 	fmt.Println("Finished traversing filebase in ", end.Sub(start).Minutes(), " minutes")
 	fmt.Println("Filebase objects: ", count)
