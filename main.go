@@ -113,10 +113,6 @@ func worker(jobs chan string, results chan string, wg *sync.WaitGroup, dirWg *sy
 func traverse(f string, result chan string, queue chan string, dirWg *sync.WaitGroup) error {
 	defer dirWg.Done()
 
-	if strings.HasSuffix(f, "System") {
-		return nil // Skip explicitly
-	}
-
 	dir, err := os.ReadDir(f)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) {
