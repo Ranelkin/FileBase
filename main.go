@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,31 +14,28 @@ import (
 )
 
 func main() {
-
 	numWorkers := runtime.NumCPU() * 8
-
 	if numWorkers > 200 {
 		numWorkers = 200
 	}
 	if numWorkers < 16 {
 		numWorkers = 16
 	}
-
 	fmt.Printf("Using %d workers (%d CPU cores detected)\n", numWorkers, runtime.NumCPU())
-	fmt.Println("Please paste the directory to traverse: ")
 
+	fmt.Println("Please paste the directory to traverse: ")
 	dir := bufio.NewScanner(os.Stdin)
 	dir.Scan()
 	entryDir := strings.TrimSpace(dir.Text())
-	fmt.Println("Start to traverse filebase: ", entryDir)
 
+	fmt.Println("Start to traverse filebase: ", entryDir)
 	pid := os.Getpid()
 	fmt.Println("PId: ", pid)
 
 	start := time.Now()
 
-	result := make(chan string, 1000)
-	queue := make(chan string, 1000)
+	result := make(chan string, 1000000)
+	queue := make(chan string, 10000)
 
 	var wg sync.WaitGroup
 	var dirWg sync.WaitGroup
@@ -47,7 +45,7 @@ func main() {
 		go worker(queue, result, &wg, &dirWg)
 	}
 
-	//Send init dir
+	// Send init dir
 	dirWg.Add(1)
 	queue <- entryDir
 
@@ -103,7 +101,6 @@ func main() {
 
 func worker(jobs chan string, results chan string, wg *sync.WaitGroup, dirWg *sync.WaitGroup) {
 	defer wg.Done()
-
 	for job := range jobs {
 		if err := traverse(job, results, jobs, dirWg); err != nil {
 			fmt.Fprintf(os.Stderr, "Error traversing %s: %v\n", job, err)
@@ -115,17 +112,40 @@ func worker(jobs chan string, results chan string, wg *sync.WaitGroup, dirWg *sy
 // queue and result if its a directory, to result if its a file
 func traverse(f string, result chan string, queue chan string, dirWg *sync.WaitGroup) error {
 	defer dirWg.Done()
+
+	if strings.HasSuffix(f, "System") {
+		return nil // Skip explicitly
+	}
+
 	dir, err := os.ReadDir(f)
 	if err != nil {
-		return err
+		if errors.Is(err, os.ErrPermission) {
+			return nil // Skip silently on permission denied
+		}
+		return err // Other errors returned (and printed)
 	}
+
 	for _, d := range dir {
 		name := f + "/" + d.Name()
-		result <- name
+
+		// Send to result channel (has large buffer, unlikely to block)
+		select {
+		case result <- name:
+		default:
+			// If result channel is full, send in a goroutine to avoid blocking
+			go func(n string) {
+				result <- n
+			}(name)
+		}
+
 		if d.IsDir() {
 			dirWg.Add(1)
-			queue <- name
+			// Send directory to queue in a separate goroutine to prevent blocking
+			go func(dirName string) {
+				queue <- dirName
+			}(name)
 		}
 	}
+
 	return nil
 }
