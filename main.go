@@ -7,6 +7,7 @@ import (
 	"filebase/util"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -39,8 +40,9 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		path := arr[2]
-		err = util.WriteToFile(*diff, path)
+		pRaw := arr[2]
+		dirPath := filepath.Dir(pRaw)
+		err = util.WriteToFile(*diff, dirPath)
 		if err != nil {
 			panic(err)
 		}
