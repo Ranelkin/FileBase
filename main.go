@@ -2,146 +2,51 @@ package main
 
 import (
 	"bufio"
-	"compress/gzip"
-	"errors"
+	"filebase/compare"
+	"filebase/traverse"
+	"filebase/util"
 	"fmt"
-	"io"
 	"os"
-	"runtime"
 	"strings"
-	"sync"
-	"time"
 )
 
 func main() {
-	numWorkers := runtime.NumCPU() * 8
-	if numWorkers > 200 {
-		numWorkers = 200
-	}
-	if numWorkers < 16 {
-		numWorkers = 16
-	}
-	fmt.Printf("Using %d workers (%d CPU cores detected)\n", numWorkers, runtime.NumCPU())
+	fmt.Println("Hello welcome to FileBase!")
+	fmt.Println("To traverse a directory please enter the command 'traverse' followed by the directorys path")
+	fmt.Println("To get the difference of one directory to another please enter 'diff <path1> <path2>'")
+	fmt.Println("Where path1 and path2 are both the compressed .txt files created by the traverse cli tool from FileBase")
+	fmt.Print("FileBase: ")
 
-	fmt.Println("Please paste the directory to traverse: ")
-	dir := bufio.NewScanner(os.Stdin)
-	dir.Scan()
-	entryDir := strings.TrimSpace(dir.Text())
-
-	fmt.Println("Start to traverse filebase: ", entryDir)
-	pid := os.Getpid()
-	fmt.Println("PId: ", pid)
-
-	start := time.Now()
-
-	result := make(chan string, 1000000)
-	queue := make(chan string, 10000)
-
-	var wg sync.WaitGroup
-	var dirWg sync.WaitGroup
-
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go worker(queue, result, &wg, &dirWg)
-	}
-
-	// Send init dir
-	dirWg.Add(1)
-	queue <- entryDir
-
-	go func() {
-		dirWg.Wait()
-		close(queue)
-	}()
-
-	go func() {
-		wg.Wait()
-		close(result)
-	}()
-
-	// File gets truncated if it already exists
-	f, err := os.Create(entryDir + "/.fileBase.txt")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
-	var count int = 0
-	for entry := range result {
-		f.Write([]byte((entry + "\n")))
-		count++
-	}
-
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		panic(err)
-	}
-
-	dst, err := os.Create(entryDir + "/.fileBase.txt.gz")
-	if err != nil {
-		panic(err)
-	}
-	defer dst.Close()
-
-	zip, err := gzip.NewWriterLevel(dst, gzip.BestCompression)
-	if err != nil {
-		panic(err)
-	}
-	defer zip.Close()
-
-	if _, err := io.Copy(zip, f); err != nil {
-		panic(err)
-	}
-
-	os.Remove(entryDir + "/.fileBase.txt")
-
-	end := time.Now()
-	fmt.Println("Finished traversing filebase in ", end.Sub(start).Minutes(), " minutes")
-	fmt.Println("Filebase objects: ", count)
-}
-
-func worker(jobs chan string, results chan string, wg *sync.WaitGroup, dirWg *sync.WaitGroup) {
-	defer wg.Done()
-	for job := range jobs {
-		if err := traverse(job, results, jobs, dirWg); err != nil {
-			fmt.Fprintf(os.Stderr, "Error traversing %s: %v\n", job, err)
+	input := bufio.NewScanner(os.Stdin)
+	input.Scan()
+	in := strings.TrimSpace(input.Text())
+	arr := strings.Split(in, " ")
+	cmd := strings.ToLower(arr[0])
+	switch cmd {
+	case "traverse":
+		//Check for correct input
+		if !(len(arr) != 2) {
+			fmt.Println("Wrong ammount of path entries. Make sure to enter 1 path")
 		}
-	}
-}
+		traverse.Traverse(arr[1])
 
-// Scans the content of the directory f and sends it to channel
-// queue and result if its a directory, to result if its a file
-func traverse(f string, result chan string, queue chan string, dirWg *sync.WaitGroup) error {
-	defer dirWg.Done()
-
-	dir, err := os.ReadDir(f)
-	if err != nil {
-		if errors.Is(err, os.ErrPermission) {
-			return nil // Skip silently on permission denied
-		}
-		return err // Other errors returned (and printed)
-	}
-
-	for _, d := range dir {
-		name := f + "/" + d.Name()
-
-		// Send to result channel (has large buffer, unlikely to block)
-		select {
-		case result <- name:
-		default:
-			// If result channel is full, send in a goroutine to avoid blocking
-			go func(n string) {
-				result <- n
-			}(name)
+	case "diff":
+		if !(len(arr) == 3) {
+			fmt.Println("Wrong ammount of path entries. Make sure to enter 2 paths")
 		}
 
-		if d.IsDir() {
-			dirWg.Add(1)
-			// Send directory to queue in a separate goroutine to prevent blocking
-			go func(dirName string) {
-				queue <- dirName
-			}(name)
+		diff, err := compare.Difference(arr[1], arr[2])
+		if err != nil {
+			panic(err)
 		}
+		path := arr[2]
+		err = util.WriteToFile(*diff, path)
+		if err != nil {
+			panic(err)
+		}
+	default:
+		fmt.Println("Mate learn how to read")
 	}
+	fmt.Println("Exiting...")
 
-	return nil
 }
