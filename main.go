@@ -34,15 +34,20 @@ func main() {
 	case "diff":
 		if !(len(arr) == 3) {
 			fmt.Println("Wrong ammount of path entries. Make sure to enter 2 paths")
+			return
 		}
 
 		diff, err := compare.Difference(arr[1], arr[2])
 		if err != nil {
 			panic(err)
 		}
+
+		// Create a proper output filename
 		pRaw := arr[2]
 		dirPath := filepath.Dir(pRaw)
-		err = util.WriteToFile(*diff, dirPath)
+		outputFile := filepath.Join(dirPath, "diff_output.txt") // Give it an actual filename
+
+		err = util.WriteToFile(*diff, outputFile)
 		if err != nil {
 			panic(err)
 		}

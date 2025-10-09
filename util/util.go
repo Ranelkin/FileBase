@@ -18,7 +18,7 @@ func WriteToFile(content []string, path string) error {
 
 	var count int = 0
 	for _, entry := range content {
-		f.Write([]byte((entry)))
+		f.Write([]byte((entry + "\n")))
 		count++
 	}
 
